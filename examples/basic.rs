@@ -17,12 +17,14 @@ fn main() {
     let appcore_ram_origin = appcore_ram.origin();
     let appcore_ram_length = appcore_ram.length();
     let symbols = memoryspec.render_symbols();
-    let memoryx = format!("\
+    let memoryx = format!(
+        "\
 MEMORY
 {{
   FLASH : ORIGIN = 0x{primary_slot_origin:08x}, LENGTH = 0x{primary_slot_length:04x}
   RAM : ORIGIN = 0x{appcore_ram_origin:08x}, LENGTH = 0x{appcore_ram_length:04x}
 }}
-{symbols}");
+{symbols}"
+    );
     print!("{}", memoryx);
 }

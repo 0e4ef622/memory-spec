@@ -5,7 +5,6 @@ use crate::expr::tokenize::{Operator as OperatorToken, Token, TokenizeError, Tok
 mod checked_int;
 pub mod tokenize;
 
-
 pub fn eval(expr: &str, vars: &Namespace<'_>) -> Result<i64, EvalError> {
     let r = _eval(&mut Tokenizer::new(expr).peekable(), &vars, 0)?;
     let r = resolve(r, &vars)?;
@@ -15,7 +14,11 @@ pub fn eval(expr: &str, vars: &Namespace<'_>) -> Result<i64, EvalError> {
     }
 }
 
-fn _eval<'a, 'b>(tokens: &mut Peekable<Tokenizer<'a>>, vars: &'b Namespace<'a>, min_bp: u8) -> Result<Cow<'b, Value<'a>>, EvalError> {
+fn _eval<'a, 'b>(
+    tokens: &mut Peekable<Tokenizer<'a>>,
+    vars: &'b Namespace<'a>,
+    min_bp: u8,
+) -> Result<Cow<'b, Value<'a>>, EvalError> {
     let first_token = tokens.next().ok_or(EvalError::Eof)??;
 
     let mut lhs;
@@ -35,7 +38,9 @@ fn _eval<'a, 'b>(tokens: &mut Peekable<Tokenizer<'a>>, vars: &'b Namespace<'a>, 
     }
 
     loop {
-        let Some(t) = tokens.peek() else { return Ok(lhs) };
+        let Some(t) = tokens.peek() else {
+            return Ok(lhs);
+        };
         let op_token = t.as_ref().map_err(|e| *e)?;
         let infix_op;
         if let Ok(op) = PostfixOperator::from_token(op_token.clone()) {
@@ -89,7 +94,10 @@ impl<'a> Value<'a> {
     }
 }
 
-fn resolve<'a, 'b>(value: Cow<'b, Value<'a>>, vars: &'b Namespace<'a>) -> Result<Cow<'b, Value<'a>>, EvalError> {
+fn resolve<'a, 'b>(
+    value: Cow<'b, Value<'a>>,
+    vars: &'b Namespace<'a>,
+) -> Result<Cow<'b, Value<'a>>, EvalError> {
     if let Value::Unresolved(s) = &*value {
         Ok(Cow::Borrowed(vars.get(*s).ok_or(EvalError::UnknownName)?))
     } else {
@@ -161,11 +169,18 @@ impl Operator {
         }
     }
 
-    fn apply<'a, 'b>(self, lhs: Cow<'b, Value<'a>>, rhs: &Value<'a>, vars: &'b Namespace<'a>) -> Result<Cow<'b, Value<'a>>, EvalError> {
+    fn apply<'a, 'b>(
+        self,
+        lhs: Cow<'b, Value<'a>>,
+        rhs: &Value<'a>,
+        vars: &'b Namespace<'a>,
+    ) -> Result<Cow<'b, Value<'a>>, EvalError> {
         let mut lhs = resolve(lhs, &vars)?;
         let rhs = if self != Operator::Dot {
             &*resolve(Cow::Borrowed(rhs), &vars)?
-        } else { rhs };
+        } else {
+            rhs
+        };
         match (self, lhs, rhs) {
             (Operator::Dot, Cow::Borrowed(Value::Namespace(ns)), Value::Unresolved(key)) => {
                 return Ok(Cow::Borrowed(ns.get(*key).ok_or(EvalError::UnknownName)?));
@@ -173,10 +188,18 @@ impl Operator {
             (_, l, _) => lhs = l, // this is so dumb lol
         }
         match (self, &*lhs, rhs) {
-            (Operator::Add, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(a.checked_add(*b).ok_or(EvalError::Overflow)?))),
-            (Operator::Subtract, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(a.checked_sub(*b).ok_or(EvalError::Overflow)?))),
-            (Operator::Multiply, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(a.checked_mul(*b).ok_or(EvalError::Overflow)?))),
-            (Operator::Divide, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(a.checked_div(*b).ok_or(EvalError::Overflow)?))),
+            (Operator::Add, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(
+                a.checked_add(*b).ok_or(EvalError::Overflow)?,
+            ))),
+            (Operator::Subtract, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(
+                a.checked_sub(*b).ok_or(EvalError::Overflow)?,
+            ))),
+            (Operator::Multiply, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(
+                a.checked_mul(*b).ok_or(EvalError::Overflow)?,
+            ))),
+            (Operator::Divide, Value::N(a), Value::N(b)) => Ok(Cow::Owned(Value::N(
+                a.checked_div(*b).ok_or(EvalError::Overflow)?,
+            ))),
             _ => Err(EvalError::TypeMismatch),
         }
     }
@@ -200,10 +223,16 @@ impl PrefixOperator {
             Self::Negate => 5,
         }
     }
-    fn apply<'a, 'b>(self, value: Cow<'b, Value<'a>>, vars: &'b Namespace<'a>) -> Result<Cow<'b, Value<'a>>, EvalError> {
+    fn apply<'a, 'b>(
+        self,
+        value: Cow<'b, Value<'a>>,
+        vars: &'b Namespace<'a>,
+    ) -> Result<Cow<'b, Value<'a>>, EvalError> {
         let value = resolve(value, vars)?;
         match (self, &*value) {
-            (Self::Negate, Value::N(n)) => Ok(Cow::Owned(Value::N(n.checked_neg().ok_or(EvalError::Overflow)?))),
+            (Self::Negate, Value::N(n)) => Ok(Cow::Owned(Value::N(
+                n.checked_neg().ok_or(EvalError::Overflow)?,
+            ))),
             _ => Err(EvalError::TypeMismatch),
         }
     }
@@ -229,11 +258,19 @@ impl PostfixOperator {
             Self::M => 5,
         }
     }
-    fn apply<'a, 'b>(self, value: Cow<'b, Value<'a>>, vars: &'b Namespace<'a>) -> Result<Cow<'b, Value<'a>>, EvalError> {
+    fn apply<'a, 'b>(
+        self,
+        value: Cow<'b, Value<'a>>,
+        vars: &'b Namespace<'a>,
+    ) -> Result<Cow<'b, Value<'a>>, EvalError> {
         let value = resolve(value, vars)?;
         match (self, &*value) {
-            (Self::K, Value::N(n)) => Ok(Cow::Owned(Value::N(n.checked_mul(1024).ok_or(EvalError::Overflow)?))),
-            (Self::M, Value::N(n)) => Ok(Cow::Owned(Value::N(n.checked_mul(1024*1024).ok_or(EvalError::Overflow)?))),
+            (Self::K, Value::N(n)) => Ok(Cow::Owned(Value::N(
+                n.checked_mul(1024).ok_or(EvalError::Overflow)?,
+            ))),
+            (Self::M, Value::N(n)) => Ok(Cow::Owned(Value::N(
+                n.checked_mul(1024 * 1024).ok_or(EvalError::Overflow)?,
+            ))),
             _ => Err(EvalError::TypeMismatch),
         }
     }
@@ -241,7 +278,7 @@ impl PostfixOperator {
 
 #[cfg(test)]
 mod tests {
-    use super::{eval, Namespace, Value};
+    use super::{Namespace, Value, eval};
 
     macro_rules! namespace {
         ($($key:literal: $value:tt),* $(,)?) => {{
@@ -276,11 +313,7 @@ mod tests {
 
     #[test]
     fn prefix_test() {
-        let cases = [
-            ("-1", -1),
-            ("-1 + 1", 0),
-            ("-(1 + 1)", -2),
-        ];
+        let cases = [("-1", -1), ("-1 + 1", 0), ("-(1 + 1)", -2)];
         for (input, expected) in cases {
             let result = eval(input, &Namespace::default());
             assert_eq!(result, Ok(expected), "{input:?}");
@@ -291,7 +324,7 @@ mod tests {
     fn postfix_test() {
         let cases = [
             ("2K", 2048),
-            ("2M", 2*1024*1024),
+            ("2M", 2 * 1024 * 1024),
             ("3 + 1K", 1027),
             ("(3 + 1)K", 4096),
         ];
@@ -319,7 +352,7 @@ mod tests {
             ("rest.three", 3),
             ("rest.more.four", 4),
             ("rest.(three)", 3), // lol
-            ("one + two * rest.three K", 1 + 2*3*1024),
+            ("one + two * rest.three K", 1 + 2 * 3 * 1024),
         ];
         for (input, expected) in cases {
             let result = eval(input, &vars);

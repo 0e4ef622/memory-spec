@@ -4,14 +4,16 @@ pub struct Region {
     end: u64,
 }
 
-
 impl Region {
-    pub fn new(origin: Option<u64>, length: Option<u64>, end: Option<u64>) -> Result<Self, NewRegionError> {
+    pub fn new(
+        origin: Option<u64>,
+        length: Option<u64>,
+        end: Option<u64>,
+    ) -> Result<Self, NewRegionError> {
         let (origin, end) = match (origin, length, end) {
-            (Some(origin), Some(length), Some(end)) => (origin.checked_add(length)
-                == Some(end))
-            .then_some((origin, end))
-            .ok_or_else(|| NewRegionError::inconsistent("origin + length != end")),
+            (Some(origin), Some(length), Some(end)) => (origin.checked_add(length) == Some(end))
+                .then_some((origin, end))
+                .ok_or_else(|| NewRegionError::inconsistent("origin + length != end")),
             (Some(origin), Some(length), None) => origin
                 .checked_add(length)
                 .map(|end| (origin, end))
@@ -28,10 +30,7 @@ impl Region {
                 Err(NewRegionError::underspecified("missing origin"))
             }
         }?;
-        Ok(Region {
-            origin,
-            end,
-        })
+        Ok(Region { origin, end })
     }
 
     pub fn origin(&self) -> u64 {
@@ -59,7 +58,7 @@ impl Region {
 
     pub fn overlaps(&self, other: &Region) -> bool {
         let Some(overlap) = self.intersection(other) else {
-            return false
+            return false;
         };
         overlap.length() != 0
     }
@@ -73,15 +72,24 @@ pub struct NewRegionError {
 
 impl NewRegionError {
     fn overflow(message: &'static str) -> Self {
-        Self { message, kind: NewRegionErrorKind::Overflow }
+        Self {
+            message,
+            kind: NewRegionErrorKind::Overflow,
+        }
     }
 
     fn inconsistent(message: &'static str) -> Self {
-        Self { message, kind: NewRegionErrorKind::Inconsistent }
+        Self {
+            message,
+            kind: NewRegionErrorKind::Inconsistent,
+        }
     }
 
     fn underspecified(message: &'static str) -> Self {
-        Self { message, kind: NewRegionErrorKind::Underspecified }
+        Self {
+            message,
+            kind: NewRegionErrorKind::Underspecified,
+        }
     }
 }
 

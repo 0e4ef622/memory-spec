@@ -45,7 +45,10 @@ pub struct Tokenizer<'a> {
 
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
-        Self { errored: false, input }
+        Self {
+            errored: false,
+            input,
+        }
     }
 }
 
@@ -268,7 +271,10 @@ mod tests {
         for (input, expected) in cases {
             let expected = expected.iter().cloned().map(Ok).collect::<Vec<_>>();
             let tokens = Tokenizer::new(input).collect::<Vec<_>>();
-            assert_eq!(tokens, expected, "input = {input:?}, expected = {expected:?}");
+            assert_eq!(
+                tokens, expected,
+                "input = {input:?}, expected = {expected:?}"
+            );
         }
     }
 }

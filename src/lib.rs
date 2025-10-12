@@ -1,11 +1,13 @@
-use std::{collections::HashMap, fmt::{Display, Write as _}};
-pub mod region;
+use std::{
+    collections::HashMap,
+    fmt::{Display, Write as _},
+};
 mod expr;
+pub mod region;
 use kdl::{KdlDocument, KdlError, KdlNode, KdlValue};
 pub use region::Region;
 
 use crate::expr::{EvalError, Namespace, Value};
-
 
 #[derive(Clone, Debug)]
 pub struct Regions {
@@ -15,7 +17,10 @@ pub struct Regions {
 
 impl Regions {
     fn new(region: Region) -> Self {
-        Self { region, subregions: Default::default() }
+        Self {
+            region,
+            subregions: Default::default(),
+        }
     }
 
     pub fn region(&self) -> &Region {
@@ -83,7 +88,11 @@ impl MemorySpec {
 
     fn handle_vars(&self, node: &KdlNode, namespace: &mut Namespace<'_>) -> Result<(), Error> {
         // TODO warn/reject params
-        for child in node.children().ok_or_else(|| Error::InvalidNode("vars".into()))?.nodes() {
+        for child in node
+            .children()
+            .ok_or_else(|| Error::InvalidNode("vars".into()))?
+            .nodes()
+        {
             let name = child.name().value();
             let path = || format!("vars.{}", name);
             let value = child.get(0).ok_or_else(|| Error::InvalidNode(path()))?;
@@ -94,16 +103,23 @@ impl MemorySpec {
     }
 
     // basically the same as handle_vars but add the entries to the symbols table too
-    fn handle_symbols(&mut self, node: &KdlNode, namespace: &mut Namespace<'_>) -> Result<(), Error> {
+    fn handle_symbols(
+        &mut self,
+        node: &KdlNode,
+        namespace: &mut Namespace<'_>,
+    ) -> Result<(), Error> {
         // TODO warn/reject params
-        for child in node.children().ok_or_else(|| Error::InvalidNode("vars".into()))?.nodes() {
+        for child in node
+            .children()
+            .ok_or_else(|| Error::InvalidNode("vars".into()))?
+            .nodes()
+        {
             let name = child.name().value();
             let path = || format!("symbols.{}", name);
             let value = child.get(0).ok_or_else(|| Error::InvalidNode(path()))?;
             let value = eval_kdl_value(value, namespace, path)?;
             namespace.insert(name.into(), expr::Value::N(value));
-            let value = u64::try_from(value)
-                .map_err(|_| Error::InvalidNode(path()))?;
+            let value = u64::try_from(value).map_err(|_| Error::InvalidNode(path()))?;
             let prev = self.symbols.insert(name.into(), value);
             if prev.is_some() {
                 return Err(Error::NameExists(path()));
@@ -112,9 +128,17 @@ impl MemorySpec {
         Ok(())
     }
 
-    fn handle_regions(&mut self, node: &KdlNode, namespace: &mut Namespace<'_>) -> Result<(), Error> {
+    fn handle_regions(
+        &mut self,
+        node: &KdlNode,
+        namespace: &mut Namespace<'_>,
+    ) -> Result<(), Error> {
         let mut subregions = vec![];
-        for child in node.children().ok_or_else(|| Error::InvalidNode("regions".into()))?.nodes() {
+        for child in node
+            .children()
+            .ok_or_else(|| Error::InvalidNode("regions".into()))?
+            .nodes()
+        {
             let r = self.handle_region(child, namespace, None, &mut vec![])?;
             subregions.push((r, String::from(child.name().value())));
         }
@@ -131,26 +155,52 @@ impl MemorySpec {
     ) -> Result<Region, Error> {
         let name = node.name().value();
         let path_str = || format!("regions.{}.{}", path.join("."), name);
-        let origin = node.get("origin").map(|v| eval_kdl_value(v, namespace, path_str)).transpose()?;
-        let length = node.get("length").map(|v| eval_kdl_value(v, namespace, path_str)).transpose()?;
-        let end = node.get("end").map(|v| eval_kdl_value(v, namespace, path_str)).transpose()?;
-        let align = node.get("align").map(|v| eval_kdl_value(v, namespace, path_str)).transpose()?;
-        let origin = origin.map(u64::try_from).transpose().map_err(|_| Error::InvalidNode(path_str()))?;
-        let length = length.map(u64::try_from).transpose().map_err(|_| Error::InvalidNode(path_str()))?;
-        let end = end.map(u64::try_from).transpose().map_err(|_| Error::InvalidNode(path_str()))?;
-        let align = align.map(u64::try_from).transpose().map_err(|_| Error::InvalidNode(path_str()))?;
-
-        let region = Region::new(origin, length, end)
+        let origin = node
+            .get("origin")
+            .map(|v| eval_kdl_value(v, namespace, path_str))
+            .transpose()?;
+        let length = node
+            .get("length")
+            .map(|v| eval_kdl_value(v, namespace, path_str))
+            .transpose()?;
+        let end = node
+            .get("end")
+            .map(|v| eval_kdl_value(v, namespace, path_str))
+            .transpose()?;
+        let align = node
+            .get("align")
+            .map(|v| eval_kdl_value(v, namespace, path_str))
+            .transpose()?;
+        let origin = origin
+            .map(u64::try_from)
+            .transpose()
             .map_err(|_| Error::InvalidNode(path_str()))?;
+        let length = length
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::InvalidNode(path_str()))?;
+        let end = end
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::InvalidNode(path_str()))?;
+        let align = align
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::InvalidNode(path_str()))?;
+
+        let region =
+            Region::new(origin, length, end).map_err(|_| Error::InvalidNode(path_str()))?;
         if let Some(align) = align {
             if region.origin() % align != 0 || region.end() % align != 0 {
                 return Err(Error::AlignError(path_str()));
             }
         }
-        if let Some(parent_region) = parent_region && !parent_region.contains(&region) {
+        if let Some(parent_region) = parent_region
+            && !parent_region.contains(&region)
+        {
             return Err(Error::SubregionError {
                 outer: format!("regions.{}", path.join(".")),
-                inner: name.into()
+                inner: name.into(),
             });
         }
 
@@ -158,11 +208,23 @@ impl MemorySpec {
         self.add_region(region, path);
         add_value(namespace, &path, Value::Namespace(Namespace::default()))?;
         path.push("origin".into());
-        add_value(namespace, &path, Value::N(i64::try_from(region.origin()).unwrap()))?;
+        add_value(
+            namespace,
+            &path,
+            Value::N(i64::try_from(region.origin()).unwrap()),
+        )?;
         path.last_mut().unwrap().replace_range(.., "length");
-        add_value(namespace, &path, Value::N(i64::try_from(region.length()).unwrap()))?;
+        add_value(
+            namespace,
+            &path,
+            Value::N(i64::try_from(region.length()).unwrap()),
+        )?;
         path.last_mut().unwrap().replace_range(.., "end");
-        add_value(namespace, &path, Value::N(i64::try_from(region.end()).unwrap()))?;
+        add_value(
+            namespace,
+            &path,
+            Value::N(i64::try_from(region.end()).unwrap()),
+        )?;
         path.pop();
 
         let children = node.children().map(|d| d.nodes());
@@ -189,7 +251,11 @@ impl MemorySpec {
     }
 }
 
-fn eval_kdl_value(value: &KdlValue, namespace: &Namespace<'_>, path: impl Fn() -> String) -> Result<i64, Error> {
+fn eval_kdl_value(
+    value: &KdlValue,
+    namespace: &Namespace<'_>,
+    path: impl Fn() -> String,
+) -> Result<i64, Error> {
     match value {
         KdlValue::Integer(n) => Ok(i64::try_from(*n).map_err(|_| Error::InvalidValue(path()))?),
         KdlValue::String(ex) => Ok(expr::eval(ex, namespace)?),
@@ -198,10 +264,12 @@ fn eval_kdl_value(value: &KdlValue, namespace: &Namespace<'_>, path: impl Fn() -
 }
 
 fn check_overlap(mut regions: Vec<(Region, String)>, path: &[String]) -> Result<(), Error> {
-    let path_str = || if path.is_empty() {
-        "regions".into()
-    } else {
-        format!("regions.{}", path.join("."))
+    let path_str = || {
+        if path.is_empty() {
+            "regions".into()
+        } else {
+            format!("regions.{}", path.join("."))
+        }
     };
     regions.sort_unstable();
     for w in regions.windows(2) {
@@ -217,7 +285,11 @@ fn check_overlap(mut regions: Vec<(Region, String)>, path: &[String]) -> Result<
     Ok(())
 }
 
-fn add_value<'a>(namespace: &mut Namespace<'a>, path: &[String], value: expr::Value<'a>) -> Result<(), Error> {
+fn add_value<'a>(
+    namespace: &mut Namespace<'a>,
+    path: &[String],
+    value: expr::Value<'a>,
+) -> Result<(), Error> {
     match path {
         [k] => {
             let r = namespace.insert(k.clone(), value);
@@ -227,9 +299,11 @@ fn add_value<'a>(namespace: &mut Namespace<'a>, path: &[String], value: expr::Va
                 Ok(())
             }
         }
-        [k, tail @ ..] => {
-            add_value(namespace.get_mut(k).unwrap().namespace_mut().unwrap(), tail, value)
-        }
+        [k, tail @ ..] => add_value(
+            namespace.get_mut(k).unwrap().namespace_mut().unwrap(),
+            tail,
+            value,
+        ),
         [] => unreachable!(),
     }
 }
@@ -250,7 +324,7 @@ pub enum Error {
     SubregionError {
         outer: String,
         inner: String,
-    }
+    },
 }
 
 impl Display for Error {
@@ -262,10 +336,14 @@ impl Display for Error {
             Self::InvalidNode(n) => write!(f, "invalid node name {}", n),
             Self::InvalidValue(n) => write!(f, "invalid value in {}", n),
             Self::NameExists(n) => write!(f, "{} already exists", n),
-            Self::OverlapError { parent_region, region1, region2 } =>
-                write!(f, "{parent_region}: {region1} overlaps with {region2}"),
-            Self::SubregionError { outer, inner } =>
-                write!(f, "{} is not contained by {}", inner, outer),
+            Self::OverlapError {
+                parent_region,
+                region1,
+                region2,
+            } => write!(f, "{parent_region}: {region1} overlaps with {region2}"),
+            Self::SubregionError { outer, inner } => {
+                write!(f, "{} is not contained by {}", inner, outer)
+            }
         }
     }
 }
