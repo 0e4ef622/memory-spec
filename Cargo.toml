@@ -3,6 +3,10 @@ name = "memory-spec"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+description = "A single source of truth for all your memory.x files"
+keywords = ["embedded"]
+categories = ["embedded"]
+repository = "https://github.com/0e4ef622/memory-spec"
 
 [dependencies]
 unicode-ident = "1.0.19"
