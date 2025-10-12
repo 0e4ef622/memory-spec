@@ -1,0 +1,37 @@
+vars {
+    page_size "4K"
+}
+
+regions {
+    appcore_flash origin=0x0000_0000 length="1M" {
+        bootloader       origin=0x0000_0000 length="24K"
+        bootloader_state origin=0x0000_6000 length="page_size" align="page_size"
+        primary_slot     origin=0x0000_7000 length="256K"
+        secondary_slot   origin=0x0004_7000 length="260K"
+        settings         origin=0x000f_a000 length="24K"
+    }
+    appcore_ram origin=0x2000_0000 length="512K" {
+        low_ram origin=0x2000_0000 length="256K"
+        high_ram origin="appcore_ram.low_ram.end" length="256K" {
+            icmsg_tx origin=0x2007_0000 length=0x800
+            icmsg_rx origin=0x2007_8000 length=0x800
+        }
+    }
+    netcore_flash origin=0x0100_0000 length="256K"
+    netcore_ram   origin=0x2100_0000 length="64K"
+}
+
+symbols {
+    __bootloader_state_start  "appcore_flash.bootloader_state.origin"
+    __bootloader_state_end    "appcore_flash.bootloader_state.end"
+    __bootloader_active_start "appcore_flash.primary_slot.origin"
+    __bootloader_active_end   "appcore_flash.primary_slot.end"
+    __bootloader_dfu_start    "appcore_flash.secondary_slot.origin"
+    __bootloader_dfu_end      "appcore_flash.secondary_slot.end"
+    __settings_start          "appcore_flash.settings.origin"
+    __settings_end            "appcore_flash.settings.end"
+    __icmsg_tx_start          "appcore_ram.high_ram.icmsg_tx.origin"
+    __icmsg_tx_end            "appcore_ram.high_ram.icmsg_tx.end"
+    __icmsg_rx_start          "appcore_ram.high_ram.icmsg_rx.origin"
+    __icmsg_rx_end            "appcore_ram.high_ram.icmsg_rx.end"
+}
