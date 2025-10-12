@@ -2,6 +2,7 @@
 name = "memory-spec"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 unicode-ident = "1.0.19"
