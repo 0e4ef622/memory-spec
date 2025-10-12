@@ -1,4 +1,5 @@
 use memory_spec::MemorySpec;
+use std::str::FromStr;
 
 fn main() {
     let content = std::fs::read_to_string("examples/memory.kdl").unwrap();

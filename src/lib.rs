@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Write as _},
+    str::FromStr,
 };
 mod expr;
 pub mod region;
@@ -58,8 +59,10 @@ pub struct MemorySpec {
     symbols: HashMap<String, u64>,
 }
 
-impl MemorySpec {
-    pub fn from_str(content: &str) -> Result<Self, Error> {
+impl FromStr for MemorySpec {
+    type Err = Error;
+
+    fn from_str(content: &str) -> Result<Self, Error> {
         let doc: KdlDocument = content.parse()?;
         let mut namespace = Namespace::default();
         let mut spec = Self::default();
@@ -73,7 +76,9 @@ impl MemorySpec {
         }
         Ok(spec)
     }
+}
 
+impl MemorySpec {
     pub fn regions(&self) -> &HashMap<String, Regions> {
         &self.regions
     }
@@ -190,10 +195,10 @@ impl MemorySpec {
 
         let region =
             Region::new(origin, length, end).map_err(|_| Error::InvalidNode(path_str()))?;
-        if let Some(align) = align {
-            if region.origin() % align != 0 || region.end() % align != 0 {
-                return Err(Error::AlignError(path_str()));
-            }
+        if let Some(align) = align
+            && (region.origin() % align != 0 || region.end() % align != 0)
+        {
+            return Err(Error::AlignError(path_str()));
         }
         if let Some(parent_region) = parent_region
             && !parent_region.contains(&region)
@@ -206,23 +211,23 @@ impl MemorySpec {
 
         path.push(name.into());
         self.add_region(region, path);
-        add_value(namespace, &path, Value::Namespace(Namespace::default()))?;
+        add_value(namespace, path, Value::Namespace(Namespace::default()))?;
         path.push("origin".into());
         add_value(
             namespace,
-            &path,
+            path,
             Value::N(i64::try_from(region.origin()).unwrap()),
         )?;
         path.last_mut().unwrap().replace_range(.., "length");
         add_value(
             namespace,
-            &path,
+            path,
             Value::N(i64::try_from(region.length()).unwrap()),
         )?;
         path.last_mut().unwrap().replace_range(.., "end");
         add_value(
             namespace,
-            &path,
+            path,
             Value::N(i64::try_from(region.end()).unwrap()),
         )?;
         path.pop();

@@ -6,8 +6,8 @@ mod checked_int;
 pub mod tokenize;
 
 pub fn eval(expr: &str, vars: &Namespace<'_>) -> Result<i64, EvalError> {
-    let r = _eval(&mut Tokenizer::new(expr).peekable(), &vars, 0)?;
-    let r = resolve(r, &vars)?;
+    let r = _eval(&mut Tokenizer::new(expr).peekable(), vars, 0)?;
+    let r = resolve(r, vars)?;
     match &*r {
         Value::N(n) => Ok(*n),
         _ => Err(EvalError::TypeMismatch),
@@ -175,9 +175,9 @@ impl Operator {
         rhs: &Value<'a>,
         vars: &'b Namespace<'a>,
     ) -> Result<Cow<'b, Value<'a>>, EvalError> {
-        let mut lhs = resolve(lhs, &vars)?;
+        let mut lhs = resolve(lhs, vars)?;
         let rhs = if self != Operator::Dot {
-            &*resolve(Cow::Borrowed(rhs), &vars)?
+            &*resolve(Cow::Borrowed(rhs), vars)?
         } else {
             rhs
         };

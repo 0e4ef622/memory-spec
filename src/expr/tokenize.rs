@@ -75,7 +75,7 @@ impl<'a> Iterator for Tokenizer<'a> {
 fn tokenize(mut s: &str) -> Result<(Token<'_>, &str), TokenizeError> {
     s = s.trim_start();
 
-    match s.as_bytes().get(0).ok_or(TokenizeError::Eof)? {
+    match s.as_bytes().first().ok_or(TokenizeError::Eof)? {
         b'+' => Ok((Token::Operator(Operator::Add), &s[1..])),
         b'*' => Ok((Token::Operator(Operator::Multiply), &s[1..])),
         b'/' => Ok((Token::Operator(Operator::Divide), &s[1..])),
@@ -83,15 +83,14 @@ fn tokenize(mut s: &str) -> Result<(Token<'_>, &str), TokenizeError> {
         b'.' => Ok((Token::Operator(Operator::Dot), &s[1..])),
         b'(' => Ok((Token::LParen, &s[1..])),
         b')' => Ok((Token::RParen, &s[1..])),
-        b'0'..=b'9' => return tokenize_numeric_literal(s),
-        _ => return tokenize_ident(s),
+        b'0'..=b'9' => tokenize_numeric_literal(s),
+        _ => tokenize_ident(s),
     }
 }
 
 // returns None on overflow
 fn tokenize_numeric_literal(s: &str) -> Result<(Token<'_>, &str), TokenizeError> {
-    if s.starts_with("0x") {
-        let s = &s[2..];
+    if let Some(s) = s.strip_prefix("0x") {
         let mut r = Checked(Some(0i64));
         for (i, c) in s.bytes().enumerate() {
             match c {
@@ -106,9 +105,8 @@ fn tokenize_numeric_literal(s: &str) -> Result<(Token<'_>, &str), TokenizeError>
             }
         }
         let r = r.0.ok_or(TokenizeError::Overflow)?;
-        return Ok((Token::NumericLiteral(r), ""));
-    } else if s.starts_with("0o") {
-        let s = &s[2..];
+        Ok((Token::NumericLiteral(r), ""))
+    } else if let Some(s) = s.strip_prefix("0o") {
         let mut r = Checked(Some(0i64));
         for (i, c) in s.bytes().enumerate() {
             match c {
@@ -121,9 +119,8 @@ fn tokenize_numeric_literal(s: &str) -> Result<(Token<'_>, &str), TokenizeError>
             }
         }
         let r = r.0.ok_or(TokenizeError::Overflow)?;
-        return Ok((Token::NumericLiteral(r), ""));
-    } else if s.starts_with("0b") {
-        let s = &s[2..];
+        Ok((Token::NumericLiteral(r), ""))
+    } else if let Some(s) = s.strip_prefix("0b") {
         let mut r = Checked(Some(0i64));
         for (i, c) in s.bytes().enumerate() {
             match c {
@@ -136,7 +133,7 @@ fn tokenize_numeric_literal(s: &str) -> Result<(Token<'_>, &str), TokenizeError>
             }
         }
         let r = r.0.ok_or(TokenizeError::Overflow)?;
-        return Ok((Token::NumericLiteral(r), ""));
+        Ok((Token::NumericLiteral(r), ""))
     } else {
         let mut r = Checked(Some(0i64));
         for (i, c) in s.bytes().enumerate() {
@@ -150,7 +147,7 @@ fn tokenize_numeric_literal(s: &str) -> Result<(Token<'_>, &str), TokenizeError>
             }
         }
         let r = r.0.ok_or(TokenizeError::Overflow)?;
-        return Ok((Token::NumericLiteral(r), ""));
+        Ok((Token::NumericLiteral(r), ""))
     }
 }
 
@@ -159,10 +156,8 @@ pub fn tokenize_ident(s: &str) -> Result<(Token<'_>, &str), TokenizeError> {
     for (i, ch) in s.char_indices() {
         if first && !is_xid_start(ch) && ch != '_' {
             return Err(TokenizeError::InvalidToken);
-        } else {
-            if !is_xid_continue(ch) {
-                return Ok((Token::Ident(&s[..i]), &s[i..]));
-            }
+        } else if !is_xid_continue(ch) {
+            return Ok((Token::Ident(&s[..i]), &s[i..]));
         }
         first = false;
     }
