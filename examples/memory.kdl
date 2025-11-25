@@ -35,3 +35,12 @@ symbols {
     __icmsg_rx_start          "appcore_ram.high_ram.icmsg_rx.origin"
     __icmsg_rx_end            "appcore_ram.high_ram.icmsg_rx.end"
 }
+
+consts {
+    MY_CONST usize "1"
+    PAGE_SIZE usize "page_size"
+    NET_RAM_SIZE_DEC usize "netcore_ram.length" format="decimal"
+    NET_RAM_SIZE_HEX usize "netcore_ram.length" format="hex"
+    NET_RAM_SIZE_OCT usize "netcore_ram.length" format="octal"
+    NET_RAM_SIZE_BIN usize "netcore_ram.length" format="binary"
+}
