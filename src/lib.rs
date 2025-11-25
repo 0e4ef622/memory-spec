@@ -53,10 +53,50 @@ impl std::ops::Index<&str> for Regions {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub enum ConstantFormat {
+    #[default]
+    Decimal,
+    Binary,
+    Octal,
+    Hex,
+}
+
+impl ConstantFormat {
+    fn from_str(s: &str, path: impl FnOnce() -> String) -> Result<Self, Error> {
+        Ok(match s {
+            "decimal" => Self::Decimal,
+            "binary" => Self::Binary,
+            "octal" => Self::Octal,
+            "hex" => Self::Hex,
+            _ => {
+                return Err(Error::InvalidConstantFormat {
+                    path: path(),
+                    input: s.to_owned(),
+                });
+            }
+        })
+    }
+
+    fn str_variants() -> &'static [&'static str] {
+        &["decimal", "binary", "octal", "hex"]
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Constant {
+    ty: String,
+    value: i64,
+    format: ConstantFormat,
+}
+
 #[derive(Clone, Default, Debug)]
 pub struct MemorySpec {
     regions: HashMap<String, Regions>,
     symbols: HashMap<String, u64>,
+    symbols_key_order: Vec<String>,
+    consts: HashMap<String, Constant>,
+    consts_key_order: Vec<String>,
 }
 
 impl FromStr for MemorySpec {
@@ -71,6 +111,7 @@ impl FromStr for MemorySpec {
                 "vars" => spec.handle_vars(node, &mut namespace)?,
                 "regions" => spec.handle_regions(node, &mut namespace)?,
                 "symbols" => spec.handle_symbols(node, &mut namespace)?,
+                "consts" => spec.handle_consts(node, &mut namespace)?,
                 _ => (),
             }
         }
@@ -83,10 +124,52 @@ impl MemorySpec {
         &self.regions
     }
 
+    /// Render out all symbols into a string that can be included in a linker script.
     pub fn render_symbols(&self) -> String {
         let mut r = String::new();
-        for (name, value) in &self.symbols {
-            writeln!(&mut r, "{name} = 0x{value:08x};").unwrap();
+        for name in &self.symbols_key_order {
+            writeln!(&mut r, "{name} = 0x{:08x};", self.symbols[name]).unwrap();
+        }
+        r
+    }
+
+    /// Render out all consts into a string that can be included in a rust source file.
+    pub fn render_consts(&self) -> String {
+        use ConstantFormat as F;
+        let mut r = String::new();
+        let mut value_formatted = String::new();
+        for name in &self.consts_key_order {
+            let Constant { ty, value, format } = &self.consts[name];
+            value_formatted.clear();
+            match format {
+                F::Decimal => write!(&mut value_formatted, "{value}").unwrap(),
+                F::Binary => write!(&mut value_formatted, "{value:b}").unwrap(),
+                F::Octal => write!(&mut value_formatted, "{value:o}").unwrap(),
+                F::Hex => write!(&mut value_formatted, "{value:x}").unwrap(),
+            }
+            let (prefix, chunk_size) = match format {
+                F::Decimal => ("", 3),
+                F::Binary => ("0b", 8),
+                F::Octal => ("0o", 4),
+                F::Hex => ("0x", 4),
+            };
+            if value_formatted.len() > chunk_size {
+                value_formatted = value_formatted
+                    .as_bytes()
+                    .rchunks(chunk_size)
+                    .rev()
+                    .map(|b| unsafe { str::from_utf8_unchecked(b) })
+                    .fold(prefix.to_owned(), |a, b| {
+                        if a.len() == prefix.len() {
+                            a + b
+                        } else {
+                            a + "_" + b
+                        }
+                    });
+            } else {
+                value_formatted.insert_str(0, prefix);
+            }
+            writeln!(&mut r, "const {name}: {ty} = {value_formatted};").unwrap();
         }
         r
     }
@@ -107,7 +190,7 @@ impl MemorySpec {
         Ok(())
     }
 
-    // basically the same as handle_vars but add the entries to the symbols table too
+    // basically the same as handle_vars but add the entries to the symbols table instead
     fn handle_symbols(
         &mut self,
         node: &KdlNode,
@@ -122,13 +205,57 @@ impl MemorySpec {
             let name = child.name().value();
             let path = || format!("symbols.{}", name);
             let value = child.get(0).ok_or_else(|| Error::InvalidNode(path()))?;
-            let value = eval_kdl_value(value, namespace, path)?;
-            namespace.insert(name.into(), expr::Value::N(value));
+            let value: i64 = eval_kdl_value(value, namespace, path)?;
+
             let value = u64::try_from(value).map_err(|_| Error::InvalidNode(path()))?;
             let prev = self.symbols.insert(name.into(), value);
             if prev.is_some() {
                 return Err(Error::NameExists(path()));
             }
+            self.symbols_key_order.push(name.into());
+        }
+        Ok(())
+    }
+
+    // basically the same as handle_vars but add the entries to the consts table instead
+    fn handle_consts(
+        &mut self,
+        node: &KdlNode,
+        namespace: &mut Namespace<'_>,
+    ) -> Result<(), Error> {
+        // TODO warn/reject params
+        for child in node
+            .children()
+            .ok_or_else(|| Error::InvalidNode("vars".into()))?
+            .nodes()
+        {
+            let name = child.name().value();
+            let path = || format!("symbols.{}", name);
+            let ty = child.get(0).ok_or_else(|| Error::InvalidNode(path()))?;
+            let ty = ty
+                .as_string()
+                .ok_or_else(|| Error::InvalidNode(path()))?
+                .to_owned();
+            let value = child.get(1).ok_or_else(|| Error::InvalidNode(path()))?;
+            let value: i64 = eval_kdl_value(value, namespace, path)?;
+            let format = match child.get("format") {
+                None => ConstantFormat::default(),
+                Some(s) => {
+                    let s = s.as_string().ok_or_else(|| Error::InvalidConstantFormat {
+                        path: path(),
+                        input: s.to_string(),
+                    })?;
+                    ConstantFormat::from_str(s, path)?
+                }
+            };
+
+            let prev = self
+                .consts
+                .insert(name.into(), Constant { ty, value, format });
+            if prev.is_some() {
+                return Err(Error::NameExists(path()));
+            }
+            self.consts_key_order.push(name.into());
         }
         Ok(())
     }
@@ -330,6 +457,10 @@ pub enum Error {
         outer: String,
         inner: String,
     },
+    InvalidConstantFormat {
+        path: String,
+        input: String,
+    },
 }
 
 impl Display for Error {
@@ -348,6 +479,13 @@ impl Display for Error {
             } => write!(f, "{parent_region}: {region1} overlaps with {region2}"),
             Self::SubregionError { outer, inner } => {
                 write!(f, "{} is not contained by {}", inner, outer)
+            }
+            Self::InvalidConstantFormat { path, input } => {
+                write!(
+                    f,
+                    "in {path}: \"{input}\" is not a known format, expected one of {:?}",
+                    ConstantFormat::str_variants(),
+                )
             }
         }
     }
