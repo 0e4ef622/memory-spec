@@ -169,7 +169,7 @@ impl MemorySpec {
             } else {
                 value_formatted.insert_str(0, prefix);
             }
-            writeln!(&mut r, "const {name}: {ty} = {value_formatted};").unwrap();
+            writeln!(&mut r, "pub const {name}: {ty} = {value_formatted};").unwrap();
         }
         r
     }
