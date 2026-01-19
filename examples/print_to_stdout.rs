@@ -20,7 +20,7 @@ fn main() {
     let symbols = memoryspec.render_symbols();
     let consts = memoryspec.render_consts();
 
-    let output = println!(
+    println!(
         "\
 memory.x:
 MEMORY

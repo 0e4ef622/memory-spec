@@ -99,19 +99,19 @@ fn resolve<'a, 'b>(
     vars: &'b Namespace<'a>,
 ) -> Result<Cow<'b, Value<'a>>, EvalError> {
     if let Value::Unresolved(s) = &*value {
-        Ok(Cow::Borrowed(vars.get(*s).ok_or(EvalError::UnknownName)?))
+        Ok(Cow::Borrowed(vars.get(*s).ok_or_else(|| EvalError::UnknownName(s.to_string()))?))
     } else {
         Ok(value)
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum EvalError {
     TokenizeError(TokenizeError),
     UnexpectedInput,
     Eof,
     TypeMismatch,
-    UnknownName,
+    UnknownName(String),
     Overflow,
     ParenMismatch,
 }
@@ -123,7 +123,7 @@ impl std::fmt::Display for EvalError {
             EvalError::UnexpectedInput => f.write_str("syntax error"),
             EvalError::Eof => f.write_str("unexpected eof"),
             EvalError::TypeMismatch => f.write_str("type mismatch"),
-            EvalError::UnknownName => f.write_str("unknown name"),
+            EvalError::UnknownName(n) => write!(f, "unknown name {n}"),
             EvalError::Overflow => f.write_str("overflow"),
             EvalError::ParenMismatch => f.write_str("mismatched parentheses"),
         }
@@ -183,7 +183,7 @@ impl Operator {
         };
         match (self, lhs, rhs) {
             (Operator::Dot, Cow::Borrowed(Value::Namespace(ns)), Value::Unresolved(key)) => {
-                return Ok(Cow::Borrowed(ns.get(*key).ok_or(EvalError::UnknownName)?));
+                return Ok(Cow::Borrowed(ns.get(*key).ok_or(EvalError::UnknownName(key.to_string()))?));
             }
             (_, l, _) => lhs = l, // this is so dumb lol
         }

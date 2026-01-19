@@ -8,7 +8,7 @@ pub mod region;
 use kdl::{KdlDocument, KdlError, KdlNode, KdlValue};
 pub use region::Region;
 
-use crate::expr::{EvalError, Namespace, Value};
+use crate::{expr::{EvalError, Namespace, Value}, region::NewRegionError};
 
 #[derive(Clone, Debug)]
 pub struct Regions {
@@ -112,7 +112,7 @@ impl FromStr for MemorySpec {
                 "regions" => spec.handle_regions(node, &mut namespace)?,
                 "symbols" => spec.handle_symbols(node, &mut namespace)?,
                 "consts" => spec.handle_consts(node, &mut namespace)?,
-                _ => (),
+                name => return Err(Error::InvalidNodeName(name.into())),
             }
         }
         Ok(spec)
@@ -199,7 +199,7 @@ impl MemorySpec {
         // TODO warn/reject params
         for child in node
             .children()
-            .ok_or_else(|| Error::InvalidNode("vars".into()))?
+            .ok_or_else(|| Error::InvalidNode("symbols".into()))?
             .nodes()
         {
             let name = child.name().value();
@@ -286,7 +286,8 @@ impl MemorySpec {
         path: &mut Vec<String>,
     ) -> Result<Region, Error> {
         let name = node.name().value();
-        let path_str = || format!("regions.{}.{}", path.join("."), name);
+        path.push(name.into());
+        let path_str = || format!("regions.{}", path.join("."));
         let origin = node
             .get("origin")
             .map(|v| eval_kdl_value(v, namespace, path_str))
@@ -321,7 +322,7 @@ impl MemorySpec {
             .map_err(|_| Error::InvalidNode(path_str()))?;
 
         let region =
-            Region::new(origin, length, end).map_err(|_| Error::InvalidNode(path_str()))?;
+            Region::new(origin, length, end).map_err(|e| Error::InvalidRegion(path_str(), e))?;
         if let Some(align) = align
             && (region.origin() % align != 0 || region.end() % align != 0)
         {
@@ -336,7 +337,6 @@ impl MemorySpec {
             });
         }
 
-        path.push(name.into());
         self.add_region(region, path);
         add_value(namespace, path, Value::Namespace(Namespace::default()))?;
         path.push("origin".into());
@@ -390,7 +390,7 @@ fn eval_kdl_value(
 ) -> Result<i64, Error> {
     match value {
         KdlValue::Integer(n) => Ok(i64::try_from(*n).map_err(|_| Error::InvalidValue(path()))?),
-        KdlValue::String(ex) => Ok(expr::eval(ex, namespace)?),
+        KdlValue::String(ex) => expr::eval(ex, namespace).map_err(|err| Error::EvalError { path: path(), err }),
         _ => Err(Error::InvalidValue(path())),
     }
 }
@@ -443,9 +443,14 @@ fn add_value<'a>(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     KdlError(KdlError),
-    EvalError(EvalError),
+    EvalError {
+        path: String,
+        err: EvalError,
+    },
     AlignError(String),
+    InvalidRegion(String, NewRegionError),
     InvalidNode(String),
+    InvalidNodeName(String),
     InvalidValue(String),
     NameExists(String),
     OverlapError {
@@ -467,18 +472,20 @@ impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::KdlError(e) => e.fmt(f),
-            Self::EvalError(e) => e.fmt(f),
-            Self::AlignError(r) => write!(f, "{} is not aligned", r),
-            Self::InvalidNode(n) => write!(f, "invalid node name {}", n),
-            Self::InvalidValue(n) => write!(f, "invalid value in {}", n),
-            Self::NameExists(n) => write!(f, "{} already exists", n),
+            Self::EvalError { path, err } => write!(f, "error evaluating {path}: {err}"),
+            Self::AlignError(r) => write!(f, "{r} is not aligned"),
+            Self::InvalidRegion(n, e) => write!(f, "invalid region {n}: {e}"),
+            Self::InvalidNode(n) => write!(f, "invalid node {n}"),
+            Self::InvalidNodeName(n) => write!(f, "invalid node name {n}"),
+            Self::InvalidValue(n) => write!(f, "invalid value in {n}"),
+            Self::NameExists(n) => write!(f, "{n} already exists"),
             Self::OverlapError {
                 parent_region,
                 region1,
                 region2,
             } => write!(f, "{parent_region}: {region1} overlaps with {region2}"),
             Self::SubregionError { outer, inner } => {
-                write!(f, "{} is not contained by {}", inner, outer)
+                write!(f, "{inner} is not contained by {outer}")
             }
             Self::InvalidConstantFormat { path, input } => {
                 write!(
@@ -497,12 +504,6 @@ impl From<KdlError> for Error {
     }
 }
 
-impl From<EvalError> for Error {
-    fn from(t: EvalError) -> Self {
-        Self::EvalError(t)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,7 +515,7 @@ mod tests {
             region2 origin=2 end=3
         }"#;
 
-        let r = MemorySpec::from_str(content).unwrap();
+        let _r = MemorySpec::from_str(content).unwrap();
     }
 
     #[test]
